@@ -1,0 +1,50 @@
+controller:
+  kind: DaemonSet                 # <— run one pod per (eligible) node
+
+  tolerations: []
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: node-role.kubernetes.io/control-plane
+            operator: DoesNotExist
+          # (optional for older clusters)
+          - key: node-role.kubernetes.io/master
+            operator: DoesNotExist
+
+
+  service:
+    type: NodePort
+    nodePorts:
+      http: 30080
+#      https: 30443
+    externalTrafficPolicy: Local  # preserve real client IP
+
+  ingressClassResource:
+    name: nginx
+    default: true
+
+  # Optional: constrain where DaemonSet runs
+#  nodeSelector:
+#    node-role.kubernetes.io/worker: "true"   # or your own label, e.g. "ingress=true"
+  # tolerations:
+  #   - key: "node-role.kubernetes.io/control-plane"
+  #     operator: "Exists"
+  #     effect: "NoSchedule"
+
+  # Trust X-Forwarded-* if your external LB terminates TLS
+  config:
+    use-forwarded-headers: "true"
+    compute-full-forwarded-for: "true"
+    # If your external LB uses PROXY protocol, also set:
+    # use-proxy-protocol: "true"
+
+  # (nice to have)
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "300Mi"
+    limits:
+      memory: "600Mi"
+

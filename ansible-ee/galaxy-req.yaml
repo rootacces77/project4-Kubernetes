@@ -1,0 +1,7 @@
+collections:
+  - kubernetes.core
+  - community.docker
+  - community.general
+  - community.crypto
+  - ansible.posix
+  - amazon.aws

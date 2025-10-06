@@ -1,0 +1,30 @@
+- name: Setup sshd config
+  vars:
+    sshd_tcp_forwd: "yes"
+    sshd_gw_ports: "no"
+  ansible.builtin.template:
+    src: server_config.conf.j2
+    dest: /etc/ssh/sshd_config.d/server_config.conf
+    mode: '0640'
+    owner: root
+    group: root
+  when: bastion_group_name in group_names
+
+
+- name: Setup sshd config
+  ansible.builtin.template:
+    src: server_config.conf.j2
+    dest: /etc/ssh/sshd_config.d/server_config.conf
+    mode: '0640'
+    owner: root
+    group: root
+  when: master_group_name in group_names
+
+- name: Setup sshd config
+  ansible.builtin.template:
+    src: server_config.conf.j2
+    dest: /etc/ssh/sshd_config.d/server_config.conf
+    mode: '0640'
+    owner: root
+    group: root
+  when: worker_group_name in group_names

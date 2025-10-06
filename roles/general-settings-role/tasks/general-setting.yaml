@@ -1,0 +1,4 @@
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: node-02
+  when: worker_group_name in group_names

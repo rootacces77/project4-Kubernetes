@@ -1,0 +1,38 @@
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+table inet filter {
+    chain input {
+        type filter hook input priority 0;
+
+        # Allow loopback traffic
+        iif "lo" accept
+
+        # Allow established and related connections
+        ct state established,related accept
+
+        # Allow ICMP traffic from Bastion and Worker's 
+        ip protocol icmp ip saddr { {{master_private_ip}}, {{bastion_private_ip}} } accept
+
+        # Allow sshd <- Bsation host
+        tcp dport {{sshd_port}} ip saddr {{bastion_private_ip}} accept
+
+        # Allow Kube-APIserver  <- Bastion Host
+        tcp dport 6443 ip saddr { {{bastion_private_ip}}, {{node_CDIR}} } accept
+
+        # Calico CNI VXLAN port
+        udp dport 4789 ip saddr {{node_CDIR}} accept
+
+        # Prometheus metric port
+        tcp dport 9100 ip saddr {{node_CDIR}} accept
+
+        # Drop everything else
+        counter drop
+    }
+
+    chain output {
+        type filter hook output priority 0;
+        accept
+    }
+}

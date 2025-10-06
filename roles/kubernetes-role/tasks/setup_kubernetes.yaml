@@ -1,0 +1,389 @@
+- name: Stop Firewalld
+  ansible.builtin.service:
+    name: firewalld
+    state: stopped
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Disable SELinux permanently
+  ansible.posix.selinux:
+    state: disabled
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Stop nftables
+  ansible.builtin.service:
+    name: nftables
+    state: stopped
+  when: ansible_facts['os_family'] == "Debian"
+
+
+
+# Disable swap, enable modules and add repositories
+- name: Add GPG key's Ubuntu
+  ansible.builtin.shell: "curl -fsSL {{item.url}} | gpg --dearmor | sudo tee {{item.dest}} > /dev/null"
+  args:
+    creates: "{{item.dest}}"
+  loop:
+    - { url: "https://pkgs.k8s.io/core:/stable:/{{kubeadm_version}}/deb/Release.key", dest: "/usr/share/keyrings/kubernetes-archive-keyring.gpg" }
+    - { url: "https://download.docker.com/linux/debian/gpg", dest: "/usr/share/keyrings/docker.gpg" }
+    - { url: "https://packages.buildkite.com/helm-linux/helm-debian/gpgkey", dest: "/usr/share/keyrings/helm.gpg" }
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Add Repo's Ubuntu
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by={{item.gpg}}] {{item.url}}"
+    filename: "{{item.name}}"
+    update_cache: yes
+    state: present
+    mode: '0644'
+  loop:
+    - { name: "kubernetes", url: "https://pkgs.k8s.io/core:/stable:/{{kubeadm_version}}/deb/ /", gpg: "/usr/share/keyrings/kubernetes-archive-keyring.gpg"}
+    - { name: "containerd", url: "https://download.docker.com/linux/debian buster stable", gpg: "/usr/share/keyrings/docker.gpg" }
+    - { name: "helm", url: "https://packages.buildkite.com/helm-linux/helm-debian/any any main", gpg: "/usr/share/keyrings/helm.gpg" }
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Add Repo's RedHat 
+  ansible.builtin.yum_repository:
+    name: "{{item.name}}"
+    description: "{{item.desc}}"
+    baseurl: "{{item.url}}"
+    enabled: yes
+    gpgcheck: yes
+    gpgkey: "{{item.gpg}}"
+    exclude: kubelet kubeadm kubectl cri-tools kubernetes-cni
+  loop:
+    - { name: "Kubernetes", desc: "Kuberentes Repo", url: "https://pkgs.k8s.io/core:/stable:/{{kubeadm_version}}/rpm/", gpg: "https://pkgs.k8s.io/core:/stable:/{{kubeadm_version}}/rpm/repodata/repomd.xml.key" }
+    - { name: "Containerd", desc: "Containerd Repo", url: "https://download.docker.com/linux/centos/$releasever/$basearch/stable", gpg: "https://download.docker.com/linux/centos/gpg" }
+    - { name: "Helm", desc: "Helm Repo", url: "https://baltocdn.com/helm/stable/rpm", gpg: "https://baltocdn.com/helm/stable/rpm/repodata/repomd.xml.key" } 
+  when: ansible_facts['os_family'] == "RedHat"
+
+
+- name: Ensure overlay module is loaded
+  community.general.modprobe:
+    name: "{{item}}"
+    state: present
+  loop:
+    - overlay 
+    - br_netfilter 
+
+- name: Persist required kernel modules
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: |
+      overlay
+      br_netfilter
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Disable swap immediately if present
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Comment out swap entries in fstab
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^(\s*[^#\n]+\s+\S+\s+swap\s+[^#\n]*?)$'
+    replace: '# \1'
+###############################################################################################
+
+
+
+
+
+# Install kuberentes and kubernetes requirements
+
+- name: Install Required software RedHat
+  ansible.builtin.dnf:
+    name: "{{req_list_redhat}}"
+    state: present
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Install Required software Debian
+  ansible.builtin.apt:
+    name: "{{req_list_debian}}"
+    state: present
+  when: ansible_facts['os_family'] == "Debian"
+
+
+
+- name: Install Kubernetes Master
+  ansible.builtin.package:
+    name: "{{req_list_master}}"
+    state: present
+  when: master_group_name in group_names
+
+- name: Install Kubernetes Worker
+  ansible.builtin.package:
+    name: "{{req_list_worker}}"
+    state: present
+  when: worker_group_name in group_names
+
+
+
+
+- name: Install Kubernetes Python lib
+  ansible.builtin.apt:
+    name: python3-kubernetes
+    state: present
+  when: (master_group_name in group_names) and (ansible_facts['os_family'] == "Debian")
+
+- name: Install Kubernetes Python lib
+  ansible.builtin.pip:
+    name: kubernetes
+    state: present
+    executable: pip3
+  when: (master_group_name in group_names) and (ansible_facts['os_family'] == "RedHat")
+
+###############################################################################################
+
+
+
+
+
+#Create containerd config -> override default config with no parameters
+- name: Ensure containerd config directory exists
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    mode: '0755'
+
+- name: Get config file stat
+  ansible.builtin.stat:
+    path: /etc/containerd/config.toml
+  register: config_stat
+
+- name: Create Containerd config
+  ansible.builtin.shell: "containerd config default | tee /etc/containerd/config.toml "
+  when: (config_stat.stat.blocks < 9) or (not config_stat.stat.exists) 
+
+- name: Enable SystemdCgroup in containerd config
+  ansible.builtin.replace:
+    path: /etc/containerd/config.toml
+    regexp: 'SystemdCgroup = false'
+    replace: 'SystemdCgroup = true'
+
+- name: Add Kubelet flags
+  ansible.builtin.copy:
+    dest: /var/lib/kubelet/kubead-flags.env
+    content: 'KUBELET_KUBEADM_ARGS="--pod-infra-container-image=registry.k8s.io/pause:3.10.1 --container-runtime=remote --container-runtime-endpoint=unix:///run/containerd/containerd.sock"'
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Enable and Start Containerd and Kubelet
+  ansible.builtin.service:
+    name: "{{item}}"
+    state: started
+    enabled: true
+  loop:
+    - containerd
+    - kubelet
+
+- name: Restart Containerd
+  ansible.builtin.service:
+    name: "{{item}}"
+    state: restarted
+    daemon_reload: true
+  loop:
+    - containerd
+    - kubelet
+##########################################################################################################
+
+
+# Create control plane pods (proxy,api...)
+
+- name: Generate Kubeadm config file
+  ansible.builtin.template:
+    src: kubeadm-config.yaml.j2
+    dest: /root/kubeadm-config.yaml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Initialize Kubernetes control plane
+  ansible.builtin.command: >
+    kubeadm init --config /root/kubeadm-config.yaml
+  args:
+    creates: /etc/kubernetes/admin.conf
+  when: master_group_name in group_names
+
+- name: Create kube dir for root
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    owner: root
+    group: root
+  when: master_group_name in group_names
+
+
+- name: Copy config for root
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    owner: root
+    group: root
+    mode: '0644'
+    remote_src: true
+  when: master_group_name in group_names
+
+
+- name: Wait for kube-proxy DaemonSet to be fully available
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: DaemonSet
+    namespace: kube-system
+    name: kube-proxy
+    kubeconfig: /etc/kubernetes/admin.conf
+  register: proxy_info
+  until: >
+    (proxy_info is defined) and
+    ((proxy_info.resources[0].status.numberAvailable | default(0)) ==
+     (proxy_info.resources[0].status.desiredNumberScheduled | default(0)))
+  retries: 30
+  delay: 10
+  when: master_group_name in group_names
+
+
+
+#########################################################################################
+
+
+
+
+
+#Create CNI calico -> networking
+
+- name: Apply Calico operator-crds
+  kubernetes.core.k8s:
+    state: present
+    src: "https://raw.githubusercontent.com/projectcalico/calico/{{calico_version}}/manifests/operator-crds.yaml"
+    kubeconfig: /etc/kubernetes/admin.conf
+  when: master_group_name in group_names
+
+- name: Apply Tigera operator manifest
+  kubernetes.core.k8s:
+    state: present
+    src: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/tigera-operator.yaml"
+    kubeconfig: /etc/kubernetes/admin.conf
+  when: master_group_name in group_names
+
+# Wait for tigera-operator Deployment
+- name: Wait for tigera-operator Deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: tigera-operator
+    name: tigera-operator
+    kubeconfig: /etc/kubernetes/admin.conf
+  register: tigera_ctrl
+  until: >
+    (tigera_ctrl is defined) and
+    ((tigera_ctrl.resources[0].status.availableReplicas | default(0)) ==
+     (tigera_ctrl.resources[0].status.readyReplicas | default(0)))
+  retries: 10
+  delay: 10
+  when: master_group_name in group_names
+
+
+
+- name: Create Calico Installation (CIDR, encapsulation)
+  kubernetes.core.k8s:
+    kubeconfig: /etc/kubernetes/admin.conf
+    state: present
+    definition:
+      apiVersion: operator.tigera.io/v1
+      kind: Installation
+      metadata:
+        name: default
+      spec:
+ #       kubernetesProvider: Kubernetes
+#        registry: ""           # use default
+        variant: Calico
+        calicoNetwork:
+          nodeAddressAutodetectionV4:
+            cidrs:
+              - "{{ calico_node_cidr }}"
+          ipPools:
+            - cidr: "{{ calico_pod_cidr }}"
+              encapsulation: VXLAN
+              natOutgoing: Enabled
+              nodeSelector: all()
+  when: master_group_name in group_names
+
+
+- name: Wait for coredns Deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: kube-system
+    name: coredns
+    kubeconfig: /etc/kubernetes/admin.conf
+  register: coredns_info
+  until: >
+    (coredns_info is defined) and
+    ((coredns_info.resources[0].status.availableReplicas | default(2) | int)  ==
+     (coredns_info.resources[0].status.readyReplicas | default(0)))
+  retries: 30
+  delay: 10
+  when: master_group_name in group_names
+
+
+#################################################################################################
+
+
+
+
+
+- name: Apply metrics-server components
+  kubernetes.core.k8s:
+    state: present
+    src: "https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml"
+    kubeconfig: /etc/kubernetes/admin.conf
+  when: master_group_name in group_names
+
+
+# Set ignore-tls for metric server so you can skip approving CRS's 
+#- name: Set metrics-server args (strategic-merge)
+#  kubernetes.core.k8s:
+#    state: present
+#    kubeconfig: /etc/kubernetes/admin.conf
+#    merge_type: [strategic-merge, merge]
+#    definition:
+#      apiVersion: apps/v1
+#      kind: Deployment
+#      metadata:
+#        name: metrics-server
+#        namespace: kube-system
+#      spec:
+#        template:
+#          spec:
+#            containers:
+#              - name: metrics-server
+#                args:
+#                  - --kubelet-insecure-tls
+#                  - --kubelet-preferred-address-types=InternalIP,ExternalIP,Hostname
+#  when: master_group_name in group_names
+
+
+
+
+- name: Get kubeadm join command
+  ansible.builtin.command: kubeadm token create --print-join-command --ttl 2h
+  register: join_cmd
+  run_once: true
+  delegate_to: "{{ groups[master_group_name][0] }}"
+
+
+- name: Show join command (controller output only)
+  ansible.builtin.debug:
+    msg: "{{ hostvars[groups[master_group_name][0]].join_cmd.stdout }}"
+  run_once: true
+
+- name: Join Worker Node
+  command: >
+    {{ hostvars[groups[master_group_name][0]].join_cmd.stdout }}
+    --cri-socket=unix:///run/containerd/containerd.sock
+  when: worker_group_name in group_names
+  args:
+    creates: /etc/kubernetes/kubelet.conf 

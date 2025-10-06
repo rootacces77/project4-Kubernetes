@@ -1,0 +1,48 @@
+- name: Install Docker
+  ansible.builtin.apt:
+    name: docker.io
+    state: present
+
+- name: Start and Enable Docker
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Create DIR's
+  ansible.builtin.file:
+    state: directory
+    path: "{{item.path}}"
+    owner: "{{item.owner}}"
+    group: "{{item.group}}"
+    mode: "{{item.mode}}"
+  loop:
+    - { path: '/grafana', owner: 'root', group: 'root', mode: '0755' }
+    - { path: '/grafana/grafana-data', owner: '472',group: '472', mode: '0750' }
+    - { path: '/grafana/datasources', owner: '472',group: '472', mode: '0750' }
+
+
+- name: Generate Datasources Template
+  ansible.builtin.template:
+    src: datasources.yaml.j2
+    dest: /grafana/datasources/datasources.yaml
+    owner: root
+    group: root
+    mode: '0644'
+
+
+- name: Run Grafana Container
+  community.docker.docker_container:
+    name: "{{container_name}}"
+    image: grafana/grafana:latest
+    state: started
+    detach: true
+    network_mode: host 
+    env:
+      GF_SERVER_HTTP_PORT: "8080"    
+   # ports:
+   #   - "0.0.0.0:8080:3000"
+    restart_policy: always
+    volumes:
+      - /grafana/grafana-data:/var/lib/grafana
+      - /grafana/datasources:/etc/grafana/provisioning/datasources:ro 

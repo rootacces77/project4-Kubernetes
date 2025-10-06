@@ -1,0 +1,29 @@
+- name: Install AppArmor
+  ansible.builtin.apt:
+    name: "{{ app_install }}"
+    state: present
+    update_cache: true
+
+- name: Stop AppArmor
+  ansible.builtin.service:
+    name: apparmor
+    state: stopped
+
+- name: Generate profiles
+  ansible.builtin.template:
+    src: "{{item}}.j2"
+    dest: '/etc/apparmor.d/{{item}}'
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{worker_all_profiles}}"
+
+- name: Load and Complain profiles
+  ansible.builtin.shell: 'apparmor_parser -r -W /etc/apparmor.d/{{item}} | aa-complain /etc/apparmor.d/{{item}}'
+  loop: "{{ worker_all_profiles }}"
+
+- name: Start AppArmor
+  ansible.builtin.service:
+    name: apparmor
+    state: started
+    daemon_reload: true

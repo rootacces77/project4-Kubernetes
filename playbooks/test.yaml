@@ -1,0 +1,64 @@
+- name: test
+  become: true
+  hosts: master
+  tasks:
+#    - name: Compute indent of 'seccompProfile:' line (spaces count)
+#      ansible.builtin.set_fact:
+#        seccomp_indent: >-
+#          {{
+#            (
+#              (manifest_raw.content | b64decode)
+#              | regex_search('^(\\s*)seccompProfile:\\s*$', '\\1', multiline=True)
+#              | default('')
+#            ) | length | default(8, true)
+#          }}
+
+#    - name: Build padding string
+#      ansible.builtin.set_fact:
+#        pad: "{{ ' ' * seccomp_indent }}"
+
+
+ #   - name: Apply apparmor profiles to pods
+ #     ansible.builtin.blockinfile:
+ #       path: /etc/kubernetes/manifests/kube-apiserver.yaml 
+ #       create: true
+ #       backup: true
+ #       insertafter: '\s*securityContext:.*'
+ #       marker: "# {mark} ANSIBLE-K8S"
+ #       block: |
+ #         {{ pad }}appArmorProfile:
+ #         {{ pad }}  type: Localhost
+ #         {{ pad }}  localhostProfile: kube-apiserver
+
+
+    - name: Read kube-apiserver manifest
+      ansible.builtin.slurp:
+        path: /etc/kubernetes/manifests/kube-apiserver.yaml
+      register: manifest_raw
+
+    - name: Insert AppArmor block aligned under securityContext
+      ansible.builtin.blockinfile:
+        path: /etc/kubernetes/manifests/kube-apiserver.yaml
+        backup: true
+        marker: "# {mark} ANSIBLE-K8S"
+        insertafter: '^\s*securityContext:\s*$'
+# "{{ insertafter_pat }}"
+        block: |
+          {{ pad }}appArmorProfile:
+          {{ pad }}  type: Localhost
+          {{ pad }}  localhostProfile: kube-apiserver
+      vars:
+        decoded: "{{ manifest_raw.content | b64decode }}"
+    # Prefer the indent of 'seccompProfile:' if present, else 'securityContext:' + 2 spaces
+#        seccomp_indent_raw: "{{ decoded | regex_search('^(\\s*)seccompProfile:\\s*$', '\\1', multiline=True) | default('') }}"
+        sc_indent_raw:      "{{ decoded | regex_search('^(\\s*)securityContext:\\s*$', '\\1', multiline=True) | default('') }}"
+        indent: "{{ (sc_indent_raw | length) + 3 }}"
+# "{{ (seccomp_indent_raw|length) if (seccomp_indent_raw|length)>0 else ((sc_indent_raw|length)+2) }}"
+        pad: "{{ ' ' * indent }}"
+#        insertafter_pat: >-
+#          {{
+            #'^\s*type:\s*RuntimeDefault\s*$'
+            # if (decoded is search('^\s*type:\s*RuntimeDefault\s*$', multiline=True))
+           # else
+#            '^\s*securityContext:\s*$'
+#          }}

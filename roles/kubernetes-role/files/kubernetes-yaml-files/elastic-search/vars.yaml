@@ -1,0 +1,68 @@
+clusterName: "elasticsearch"
+nodeGroup: "master"
+
+# roles for this node group (Elastic 8 style)
+roles:
+  - master
+  - data
+  - ingest
+
+replicas: 1
+protocol: https         # default is https
+
+# JVM heap (keep ~50% of pod memory)
+esJavaOpts: "-Xms300m -Xmx300m"
+
+resources:
+  requests:
+    cpu: "100m"
+    memory: "600Mi"
+  limits:
+    cpu: "200m"
+    memory: "700Mi"
+
+# Persistence (dynamic PVC)
+persistence:
+  enabled: false
+
+# Volume claim template
+#volumeClaimTemplate:
+#  accessModes: ["ReadWriteOnce"]
+#  resources:
+#    requests:
+#      storage: 20Gi
+  # storageClassName: gp3     # uncomment & set if you need a specific class
+
+# Service (ClusterIP by default; change to NodePort/LB if needed)
+
+esConfig:
+  elasticsearch.yml: |
+    xpack.security.enabled: true
+    xpack.security.http.ssl.enabled: true
+    xpack.security.transport.ssl.enabled: true
+    xpack.ml.enabled: false                     # save memory
+    indices.fielddata.cache.size: 2%            # small caches
+    indices.breaker.total.limit: 60%            # keep breaker conservative
+#    discovery.type: single-node
+
+
+
+# Allows pod to be Ready when health is yellow (OK for single-node labs)
+clusterHealthCheckParams: "wait_for_status=yellow&timeout=120s"
+
+# (Optional) give ES a bit more time before first probe
+readinessProbe:
+  initialDelaySeconds: 90
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 18
+
+
+service:
+  type: NodePort
+  nodePort: 30920
+
+# Security & certs (chart can manage credentials by default)
+secret:
+  enabled: true
+  password: "admin" 

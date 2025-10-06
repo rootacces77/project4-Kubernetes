@@ -1,0 +1,23 @@
+
+#- name: Create Cron Folder
+#  ansible.builtin.file:
+#    state: directory
+#    path: /root/cronjobs
+#    owner: root
+#    group: root
+#    mode: '0750'
+
+- name: Copy cronjobs
+  ansible.builtin.copy:
+    src: cronjobs
+    dest: /root/
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Allow CSR's Job
+  ansible.builtin.cron:
+    name: "Allow CSR's"
+    state: present
+    user: root
+    job: /root/cronjobs/k8-cert-approve.sh

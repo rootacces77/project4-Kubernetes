@@ -1,0 +1,29 @@
+#SPDX-License-Identifier: MIT-0
+---
+# vars file for apparmor-role
+
+
+app_install:
+  - apparmor
+  - apparmor-utils 
+  - apparmor-profiles 
+  - apparmor-profiles-extra
+
+
+systemd_profiles:
+  - usr.bin.kubelet
+  - usr.bin.containerd
+
+worker_k8_profiles:
+  - web
+
+worker_yaml_paths:
+  - '/kubernetes-yaml-files/web/vars.yaml'
+
+master_k8_profiles:
+  - etcd
+  - kube-apiserver
+  
+master_all_profiles: "{{ systemd_profiles + master_k8_profiles }}"
+
+worker_all_profiles: "{{ systemd_profiles + worker_k8_profiles }}"

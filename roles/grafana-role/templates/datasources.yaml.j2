@@ -1,0 +1,21 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://{{prometheus_url}}
+    isDefault: true
+    jsonData:
+      tlsSkipVerify: true         # important with self-signed certs
+  - name: Elasticsearch
+    type: elasticsearch
+    access: proxy
+    url: https://{{elasticsearch_url}}
+    basicAuth: true
+    basicAuthUser: "elastic"
+    secureJsonData:
+      basicAuthPassword: "admin"
+    jsonData:
+      timeField: "@timestamp"
+      esVersion: 8
+      tlsSkipVerify: true         # important with self-signed certs

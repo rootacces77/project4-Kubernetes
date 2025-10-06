@@ -1,0 +1,5 @@
+#include <tunables/global>
+profile kube-apiserver flags=(attach_disconnected, complain, mediate_deleted) {
+  #include <abstractions/base>
+}
+

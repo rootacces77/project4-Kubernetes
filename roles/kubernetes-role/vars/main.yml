@@ -1,0 +1,66 @@
+#SPDX-License-Identifier: MIT-0
+---
+# vars file for kubernetes-role
+
+
+kubeconfig_path: '/etc/kubernetes/admin.conf'
+
+req_list_redhat:
+  - curl
+  - gnupg2
+  - ca-certificates
+  - lvm2
+  - device-mapper-persistent-data
+  - yum-utils
+
+req_list_debian:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gpg
+  - lsb-release
+  - software-properties-common
+
+req_list_master:
+  - containerd.io
+  - kubelet
+  - kubeadm
+  - kubectl
+  - python3-pip
+  - helm
+
+req_list_worker:
+  - containerd.io
+  - kubelet
+  - kubeadm
+
+namespaces:
+  - prometheus-metrics
+  - elastic-stack
+
+helm_install:
+  - name: prometheus
+    release_name: my-prometheus
+    namespace: prometheus-metrics
+    var_file: /kubernetes-yaml-files/prometheus/vars.yaml 
+    chart: prometheus-community/prometheus
+  - name: elasticsearch
+    release_name: elastic-stack
+    namespace: elastic-stack
+    var_file: /kubernetes-yaml-files/elastic-search/vars.yaml 
+    chart: elastic/elasticsearch
+  - name: filebeat
+    release_name: filebeat
+    namespace: elastic-stack
+    var_file: /kubernetes-yaml-files/filebeat/vars.yaml
+    chart: elastic/filebeat
+#  - name: web
+#    namespace: web
+#    release_name: web
+#    var_file: /kubernetes-yaml-files/web/vars.yaml
+#    chart: bitnami/apache
+  - name: ingress-nginx
+    namespace: web
+    release_name: ingress-nginx
+    var_file: /kubernetes-yaml-files/ingress-nginx/vars.yaml
+    chart: ingress-nginx/ingress-nginx

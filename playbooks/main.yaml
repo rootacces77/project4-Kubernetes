@@ -1,0 +1,26 @@
+- name: Main File
+  hosts: bastion
+  become: true
+  vars_files:
+    - vars/main.yaml
+  roles:
+    - user-role
+    - general-settings-role
+    - sshd-role
+    - grafana-role
+    - sysctl-role
+    - kubernetes-role
+    - apparmor-role
+    - firewall-role
+    - cron-role
+  tasks:
+    - name: Restart SSHD
+      ansible.builtin.include_role:
+        name: sshd-role
+        tasks_from: restart_sshd
+
+
+    - name: Restart nft
+      ansible.builtin.include_role:
+        name: firewall-role
+        tasks_from: restart_firewall.yaml

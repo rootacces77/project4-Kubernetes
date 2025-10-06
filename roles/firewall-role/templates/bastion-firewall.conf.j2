@@ -1,0 +1,28 @@
+#!/usr/sbin/nft -f
+
+
+table inet filter {
+    chain input {
+        type filter hook input priority 0;
+
+        # Allow loopback traffic
+        iif "lo" accept
+
+        # Allow established and related connections
+        ct state established,related accept
+
+        # Allow SSH 
+        tcp dport {{sshd_port}} ip saddr {{admin_public_ip}} accept
+
+        # Allow Grafana
+        tcp dport {{grafana_port}} ip saddr {{admin_public_ip}} accept
+        
+        # Drop everything else
+        counter drop
+    }
+
+    chain output {
+        type filter hook output priority 0;
+        accept
+    }
+}

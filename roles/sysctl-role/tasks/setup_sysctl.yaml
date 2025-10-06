@@ -1,0 +1,39 @@
+- name: Generate Sysctl Config File
+  ansible.builtin.template:
+    src: bastion-sysctl.conf.j2
+    dest: /etc/sysctl.d/bastion-sysctl.conf
+    owner: root
+    group: root
+    mode: '0644'
+  when: bastion_group_name in group_names
+  notify:
+    - Reload sysctl
+
+- name: Generate Sysctl Config File
+  ansible.builtin.template:
+    src: master-sysctl.conf.j2
+    dest: /etc/sysctl.d/master-sysctl.conf
+    owner: root
+    group: root
+    mode: '0644'
+  when: master_group_name in group_names
+  notify:
+    - Reload sysctl
+
+- name: Generate Sysctl Config File
+  ansible.builtin.template:
+    src: worker-sysctl.conf.j2
+    dest: /etc/sysctl.d/worker-sysctl.conf
+    owner: root
+    group: root
+    mode: '0644'
+  when: worker_group_name in group_names
+  notify:
+    - Reload sysctl
+
+
+- name: Generate worker AppArmor profiles
+  ansible.builtin.include_role:
+    name: apparmor-role
+    tasks_from:  setup_worker_apparmor.yaml
+  when: worker_group_name in group_names

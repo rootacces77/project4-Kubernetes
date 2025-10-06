@@ -1,0 +1,49 @@
+server:
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "350Mi"
+    limits:
+      memory: "400Mi"
+  # Expose Prometheus via NodePort
+  service:
+    type: NodePort
+    nodePort: 32090        # fixed port, or remove to auto-assign
+    port: 9090
+
+  # Enable persistent storage
+  persistentVolume:
+    enabled: false
+#    size: 5Gi
+#    storageClass: local-path      # adjust to your storage class (gp3, longhorn, nfs-client, etc.)
+#    accessModes: ["ReadWriteOnce"]
+
+  # Security context to fix permissions
+  securityContext:
+    fsGroup: 65534
+    fsGroupChangePolicy: OnRootMismatch
+
+alertmanager:
+  enabled: false
+
+pushgateway:
+  enabled: false
+
+# Keep only Prometheus server and kube-state-metrics
+kubeStateMetrics:
+  enabled: true
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "100Mi"
+    limits:
+      memory: "150Mi"
+
+nodeExporter:
+  enabled: true
+  resources:
+    requests:
+      cpu: "30m"
+      memory: "50Mi"
+    limits:
+      memory: "100Mi"

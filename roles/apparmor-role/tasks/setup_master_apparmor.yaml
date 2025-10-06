@@ -1,0 +1,53 @@
+- name: Install AppArmor
+  ansible.builtin.apt:
+    name: "{{ app_install }}"
+    state: present
+    update_cache: true
+
+- name: Stop AppArmor
+  ansible.builtin.service:
+    name: apparmor
+    state: stopped
+
+- name: Generate AppArmor templates
+  ansible.builtin.template:
+    src: "{{item}}.j2"
+    dest: "/etc/apparmor.d/{{item}}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{master_all_profiles}}"
+
+- name: Complain profiles
+  ansible.builtin.shell: 'apparmor_parser -r -W /etc/apparmor.d/{{item}} | aa-complain /etc/apparmor.d/{{item}}'
+  loop: "{{master_all_profiles}}"
+
+
+- name: Start AppArmor
+  ansible.builtin.service:
+    name: apparmor
+    state: started
+    daemon_reload: true
+
+- name: Read kube-apiserver manifest
+  ansible.builtin.slurp:
+    path: /etc/kubernetes/manifests/kube-apiserver.yaml
+  register: manifest_raw
+
+- name: Insert AppArmor block aligned under securityContext
+  ansible.builtin.blockinfile:
+    path: '/etc/kubernetes/manifests/{{item}}.yaml'
+    backup: true
+    marker: "# {mark} ANSIBLE-K8S"
+    insertafter: '^\s*securityContext:\s*$'
+    block: |
+      {{ pad }}appArmorProfile:
+      {{ pad }}  type: Localhost
+      {{ pad }}  localhostProfile: {{item}}
+  vars:
+    decoded: "{{ manifest_raw.content | b64decode }}"
+    sc_indent_raw:      "{{ decoded | regex_search('^(\\s*)securityContext:\\s*$', '\\1', multiline=True) | default('') }}"
+    indent: "{{ (sc_indent_raw | length) + 3 }}"
+    pad: "{{ ' ' * indent }}"
+  loop: "{{master_k8_profiles}}"
+

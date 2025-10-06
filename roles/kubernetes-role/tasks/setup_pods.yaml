@@ -1,0 +1,51 @@
+- name: Add Prometheus Helm repository
+  kubernetes.core.helm_repository:
+    name: "{{item.name}}"
+    repo_url: "{{item.repo_url}}"
+    repo_state: present
+  loop:
+    - { name: "prometheus-community", repo_url: "https://prometheus-community.github.io/helm-charts" }
+    - { name: "elastic", repo_url: "https://helm.elastic.co" }
+    - { name: "ingress-nginx", repo_url: "https://kubernetes.github.io/ingress-nginx" }
+
+- name: Copy YAML Vars files
+  ansible.builtin.copy:
+    src: kubernetes-yaml-files
+    dest: /
+    owner: root
+    group: root
+    mode: '0750'
+
+
+#- name: Ensure Docker registry secret exists (idempotent)
+#  ansible.builtin.shell: >
+#    kubectl create secret docker-registry regcred
+#    --docker-server=docker.io
+#    --docker-username={{ docker_username }}
+#    --docker-password={{ docker_password }}
+#    --namespace=default
+#    --dry-run=client -o yaml | kubectl apply -f -
+#  args:
+#    warn: false
+
+
+- name: Apply apache.yaml manifest
+  kubernetes.core.k8s:
+    state: present
+    src: /kubernetes-yaml-files/web/web-deployment.yaml
+
+- name: Install/upgrade Helm deployments
+  kubernetes.core.helm:
+    name: "{{ item.release_name }}"
+    chart_ref: "{{ item.chart }}"
+    create_namespace: true
+    release_namespace: "{{ item.namespace }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+    values_files:
+      - "{{ item.var_file }}"
+    update_repo_cache: true
+    wait: true
+    atomic: true
+    state: present
+    chart_version: "{{ chart_version | default(omit) }}"
+  loop: "{{helm_install}}"
